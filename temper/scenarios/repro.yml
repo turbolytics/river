@@ -1,0 +1,109 @@
+# Deterministic reproductions of what the audit found. Each fails with one
+# command on an affected client:
+#
+#   temper scenarios run --scenario <id>
+#
+# Each prints its verdicts, and keeps its log in .temper/scenarios/<id>/.
+
+- id: river.cancel_during_rescue
+  runner: temper
+  name: A job cancelled while the rescuer is retrying it never runs again
+  description: >
+    The rescuer reads stuck jobs, then writes the state it decided for each.
+    A JobCancel that commits in between must still stop the job. Three stuck
+    jobs: A's row is locked so the rescuer's write blocks, B is cancelled
+    while it waits, and C is cancelled before the rescue as a control.
+  subject: cluster.go
+  compose: temper/compose.yml
+  covers: [cancel.never_reruns]
+  events:
+    - up: {postgres: 1}
+    - run: [tool, rivercheck, migrate]
+    - run: [tool, rivercheck, stuck, "3"]          # jobs 1 (A), 2 (B) and 3 (C)
+    - run: [tool, rivercheck, cancel, "3"]          # C: cancelled before any rescue
+    - hold:
+        name: lock_a
+        exec: [postgres, psql, -U, postgres, -d, river, -c,
+               "BEGIN; SET application_name = 'lock_a'; SELECT id FROM river_job WHERE id = 1 FOR UPDATE; SELECT pg_sleep(600)"]
+    - up: {leader-go: 1}
+    - wait_until:                                   # the rescuer's write is blocked on A
+        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
+               "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%river:rescue_count%' AND wait_event_type = 'Lock'"]
+        at_least: 1
+        timeout: 90s
+    - run: [tool, rivercheck, cancel, "2"]          # B: cancelled while the rescue is in flight
+    - exec:                                         # end the lock's session; ending psql alone leaves the backend holding it
+        [postgres, psql, -U, postgres, -d, river, -Atc,
+         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'lock_a'"]
+    - wait_until:
+        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
+               "SELECT count(*) FROM river_job WHERE id IN (2, 3) AND finalized_at IS NOT NULL"]
+        at_least: 2
+        timeout: 60s
+    - check:
+        covers: cancel.never_reruns                 # attempts that started after their job's cancel returned
+        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
+               "SELECT count(*) FROM audit_attempts a JOIN audit_cancels c USING (job_id) WHERE a.at > c.at"]
+
+- id: river.java_complete_after_rescue
+  runner: temper
+  name: A Java worker's completion transaction never commits for an attempt the rescuer already retried
+  description: >
+    complete(connection) puts the job's completion in the caller's
+    transaction, so the effect commits only if the job completes. When the
+    rescuer has already retried the attempt, completing must fail and the
+    transaction must roll back; otherwise the effect commits and the retry
+    runs it again.
+  subject: cluster.go_java
+  compose: temper/compose.yml
+  covers: [complete_tx.effect_once]
+  events:
+    - up: {postgres: 1}
+    - run: [tool, rivercheck, migrate]
+    - run: [tool, rivercheck, insert, "1"]
+    - up: {worker-java-stalling: 1}
+    - wait_until:                                   # attempt 1 has started and is overrunning
+        exec: [postgres, psql, -U, postgres, -d, river, -Atc, "SELECT count(*) FROM audit_attempts"]
+        at_least: 1
+        timeout: 120s
+    - up: {rescuer-go: 1}                           # a Go leader whose rescuer retries it
+    - wait_until:
+        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
+               "SELECT count(*) FROM river_job WHERE id = 1 AND finalized_at IS NOT NULL"]
+        at_least: 1
+        timeout: 120s
+    - check:
+        covers: complete_tx.effect_once             # jobs whose effect committed more than once
+        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
+               "SELECT count(*) FROM (SELECT job_id FROM audit_effects GROUP BY job_id HAVING count(*) > 1) d"]
+
+- id: river.periodic_once_per_period
+  runner: temper
+  name: A periodic job unique per period is enqueued once per period, even when its leader stalls
+  description: >
+    A periodic job runs every 2 s and is unique per 2 s. River keys
+    uniqueness by period on the time a job is scheduled to run, so the same
+    run enqueued twice, as two leaders do across a failover, must be
+    deduplicated. The leader is frozen for 5 s, so it enqueues a run late.
+    Then every enqueued run is inserted again the way River keys a unique
+    job, in a transaction that is rolled back. Both the Go reference and the
+    Java port key a periodic run on its insert time, so the late run is not
+    deduplicated.
+  compose: temper/compose.yml
+  covers: [periodic.once_per_period]
+  subjects:
+    cluster.go: {periodic-go: 1}
+    cluster.go_java: {periodic-java: 1}
+  seed: 1
+  events:
+    - up: {postgres: 1}
+    - run: [tool, rivercheck, migrate]
+    - up: {$subject: true}
+    - sleep: 15s
+    - fault: periodic_stall
+    - sleep: 10s
+    - down: [periodic-go, periodic-java]
+    - run: [tool, rivercheck, periodic-audit, --explain]   # each run, its unique key, and whether it deduplicates
+    - check:
+        covers: periodic.once_per_period            # runs not deduplicated when enqueued again
+        run: [tool, rivercheck, periodic-audit]

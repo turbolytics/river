@@ -1,0 +1,116 @@
+# Each claim quotes River's docs. The probe (temper/probe) checks it in the
+# database: an effect table written in the job's completion transaction, a
+# ledger written in the insert's transaction, and every attempt's own
+# attempted_at and scheduled_at.
+invariants:
+  - id: job.never_lost
+    claim: >
+      A committed job is worked to a final state. ("Once a job is committed to
+      the database, River will not lose track of it and will ensure that it is
+      executed", Reliable workers.)
+    applies_to: cluster
+    class: liveness
+    family: delivery
+    requires: [faults]
+  - id: insert.rollback_never_runs
+    claim: >
+      A job inserted in a transaction that rolls back never runs. (Jobs are
+      "enqueued transactionally and atomically along with other database
+      changes", Reliable workers.)
+    applies_to: cluster
+    class: safety
+    family: atomicity
+    requires: [faults]
+  - id: complete_tx.effect_once
+    claim: >
+      An effect committed with JobCompleteTx happens at most once. ("A
+      successful commit guarantees that the job will never rerun", Transactional
+      job completion.)
+    applies_to: cluster
+    class: safety
+    family: delivery
+    requires: [faults]
+  - id: complete_tx.effect_iff_completed
+    claim: >
+      A job is completed exactly when its JobCompleteTx effect committed. ("A
+      failed commit discards all other changes so the next rerun starts with a
+      fresh slate", Transactional job completion.)
+    applies_to: cluster
+    class: safety
+    family: atomicity
+    requires: [faults]
+  - id: schedule.never_early
+    claim: >
+      No attempt is fetched before its scheduled_at. ("The job won't be fetched
+      before its scheduled_at time", Scheduled jobs.)
+    applies_to: cluster
+    class: safety
+    family: ordering
+    requires: [faults]
+  - id: retry.within_max_attempts
+    claim: >
+      A job is attempted at most max_attempts times. ("The default limit is 25
+      total attempts, including the initial run", Job retries.)
+    applies_to: cluster
+    class: safety
+    family: delivery
+    requires: [faults]
+  - id: retry.discard_only_at_max
+    claim: >
+      A failing job is discarded only after its last attempt. ("A stuck job
+      which has not yet reached its max attempts will be scheduled for a retry",
+      RescueStuckJobsAfter.)
+    applies_to: cluster
+    class: safety
+    family: delivery
+    requires: [faults]
+  - id: snooze.never_exhausts
+    claim: >
+      Snoozing never uses up a job's attempts. ("Each time a job is snoozed, its
+      attempt count is decremented by one so that a job can keep snoozing
+      indefinitely without exhausting its maximum attempts", Snoozing jobs.)
+    applies_to: cluster
+    class: safety
+    family: delivery
+    requires: [faults]
+  - id: cancel.never_reruns
+    claim: >
+      After JobCancel returns, no new attempt of the job starts. ("Cancel a job
+      when it should never run again"; a running job that then errors or snoozes
+      "will be marked as cancelled and will not be attempted again", Cancelling
+      jobs.)
+    applies_to: cluster
+    class: safety
+    family: delivery
+    requires: [faults]
+  - id: pause.honored
+    claim: >
+      Once a client detects a pause, it fetches nothing from the queue until it
+      is resumed. ("Once a client detects that a queue is paused, it will cease
+      fetching additional jobs for that queue", Pausing queues.) Detection
+      without a notification falls back to a poll every minute (#1582), so the
+      probe allows 65 s.
+    applies_to: cluster
+    class: safety
+    family: control
+    requires: [faults]
+  - id: unique.one_per_key
+    claim: >
+      Unique jobs exist at most once per key in the chosen states, and a retry
+      that collides with a duplicate is discarded. ("River guarantees that only
+      one exists for a given set of properties"; "River will move the
+      conflicting job to discarded", Unique jobs.)
+    applies_to: cluster
+    class: safety
+    family: uniqueness
+    requires: [faults]
+  - id: periodic.once_per_period
+    claim: >
+      A periodic job that is unique per period is inserted, and its effect
+      committed, at most once per period, even across leader changes. ("a job
+      which is configured to be unique at the hourly level will only enqueue
+      once in that hour no matter how many times it's attempted", Periodic jobs.)
+    applies_to: cluster
+    class: safety
+    family: uniqueness
+    requires: [faults]

@@ -1,0 +1,5 @@
+faults:
+  # Freeze a periodic leader for 5 s, as a long GC pause or a stalled host
+  # does. The first run due in that window is enqueued at least 3 s late,
+  # more than one 2 s period.
+  periodic_stall: {target: "periodic-*", do: pause, for: 5s}

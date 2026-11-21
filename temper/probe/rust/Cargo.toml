@@ -1,0 +1,13 @@
+[package]
+name = "riverprobe"
+version = "0.1.0"
+edition = "2024"
+
+# sqlx and jiff come through riverqueue's re-exports, so versions always match.
+[dependencies]
+riverqueue = { path = "/app/riverqueue" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+
+# Its own workspace, not a member of River's.
+[workspace]

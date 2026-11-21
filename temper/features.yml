@@ -1,0 +1,35 @@
+# What River does, from its docs (riverqueue.com/docs) and the ports' READMEs.
+features:
+  - id: clients.shared_database
+    description: Go, JS, Ruby, Java and Rust clients insert and work the same jobs in one database, with one leader election.
+    requires: [faults]
+  - id: job.insert_tx
+    description: Jobs are inserted in the application's transaction and commit or roll back with it (Transactional enqueueing).
+    requires: [faults]
+  - id: job.complete_tx
+    description: JobCompleteTx completes a job in the worker's own transaction (Transactional job completion).
+    requires: [faults]
+  - id: job.retry
+    description: Failed jobs retry until max_attempts, then are discarded (Job retries).
+    requires: [faults]
+  - id: job.snooze
+    description: A worker snoozes a job to run again later without using up an attempt (Snoozing jobs).
+    requires: [faults]
+  - id: job.schedule
+    description: Jobs scheduled for the future run once due (Scheduled jobs).
+    requires: [faults]
+  - id: job.cancel
+    description: JobCancel stops a job from running again, and asks a running attempt to stop (Cancelling jobs).
+    requires: [faults]
+  - id: queue.pause
+    description: A paused queue stops fetching jobs until it is resumed (Pausing queues).
+    requires: [faults]
+  - id: job.unique
+    description: Unique jobs exist at most once per key in the chosen states (Unique jobs).
+    requires: [faults]
+  - id: job.periodic
+    description: The leader inserts periodic jobs on a schedule, with run-on-start (Periodic jobs).
+    requires: [faults]
+  - id: leader.rescue
+    description: The leader rescues jobs stuck in running after a crash, retrying or discarding them (Reliable workers).
+    requires: [faults]

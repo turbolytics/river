@@ -1,0 +1,4 @@
+*
+!java/
+!temper/recipe/java/
+java/**/target/

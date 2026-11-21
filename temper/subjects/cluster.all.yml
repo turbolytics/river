@@ -1,0 +1,4 @@
+id: cluster.all
+kind: cluster
+feature: clients.shared_database
+# One Go, one JS, one Ruby (never leader), two Java and one Rust client.

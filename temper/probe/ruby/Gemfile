@@ -1,0 +1,4 @@
+source "https://rubygems.org"
+gem "riverqueue", path: "/app"
+gem "riverqueue-sequel", path: "/app/driver/riverqueue-sequel"
+gem "pg"

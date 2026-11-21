@@ -1,0 +1,4 @@
+id: cluster.js
+kind: cluster
+feature: clients.shared_database
+# Three JS clients (Node 26).

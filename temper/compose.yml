@@ -1,0 +1,51 @@
+# The topology for River's fault scenarios (temper/scenarios). Every image is
+# built from this checkout.
+x-go: &go
+  build: {context: .., dockerfile: temper/recipe/go/Dockerfile}
+  image: river-recipe-go
+x-java: &java
+  build: {context: .., dockerfile: temper/recipe/java/Dockerfile}
+  image: river-recipe-java
+x-river: &river
+  environment:
+    DATABASE_URL: postgres://postgres:temper@postgres:5432/river?sslmode=disable
+  depends_on:
+    postgres: {condition: service_healthy}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: {POSTGRES_PASSWORD: temper, POSTGRES_DB: river}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "river"]
+      interval: 1s
+      retries: 60
+
+  # One-shot steps: migrate, insert, cancel, audit.
+  tool:
+    <<: [*river, *go]
+    command: ["true"]
+
+  # A Go client that leads and works audited jobs. Its rescuer retries a job
+  # that runs past 2 s.
+  leader-go:
+    <<: [*river, *go]
+    command: ["rivercheck", "work", "--id", "leader-go", "--rescue-after", "2s"]
+
+  # The same, on a queue no job uses: it leads and rescues, and works nothing.
+  rescuer-go:
+    <<: [*river, *go]
+    command: ["rivercheck", "work", "--id", "rescuer-go", "--queue", "other", "--rescue-after", "2s"]
+
+  # A Java worker, never a leader, whose first attempt overruns.
+  worker-java-stalling:
+    <<: [*river, *java]
+    command: ["java", "-cp", "/river.jar:/deps/*", "/recipe/StallingWorker.java"]
+
+  # Periodic leaders, one per language.
+  periodic-go:
+    <<: [*river, *go]
+    command: ["rivercheck", "periodic"]
+  periodic-java:
+    <<: [*river, *java]
+    command: ["java", "-cp", "/river.jar:/deps/*", "/recipe/PeriodicLeader.java"]

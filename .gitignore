@@ -6,3 +6,6 @@
 /riverdriver/riverdrivertest/example_libsql_test.libsql
 /sqlite/
 /rust/**/target/
+
+# Temper evidence
+.temper/
