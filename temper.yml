@@ -4,3 +4,9 @@ project: river
 levels:
   - name: faults
     description: Postgres 17 in Docker. Go, JS, Ruby, Java and Rust clients share one database while workers are killed, paused past the leader TTL and cut off, and Postgres restarts, crashes and pauses.
+
+# Built-in recipe packs the scenarios in temper/scenarios use: postgres.sql
+# for checks, and postgres.hold_lock / postgres.end_session to pin a race.
+packs:
+  - pack: postgres
+    with: {db: river}

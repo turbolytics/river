@@ -2,4 +2,9 @@ faults:
   # Freeze a periodic leader for 5 s, as a long GC pause or a stalled host
   # does. The first run due in that window is enqueued at least 3 s late,
   # more than one 2 s period.
+  #
+  # This is not the service pack's pause: that one draws 2-8 s from the seed,
+  # and a freeze shorter than one period plus slack enqueues nothing late, so
+  # the reproduction would depend on the draw. A fixed 5 s keeps it
+  # deterministic.
   periodic_stall: {target: "periodic-*", do: pause, for: 5s}

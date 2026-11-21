@@ -6,7 +6,7 @@ complete_tx.effect_once: {faults: covered}
 insert.rollback_never_runs: {faults: covered}
 job.never_lost: {faults: covered}
 pause.honored: {faults: covered}
-periodic.once_per_period: {faults: covered}
+periodic.once_per_period: {faults: failing}
 retry.discard_only_at_max: {faults: covered}
 retry.within_max_attempts: {faults: covered}
 schedule.never_early: {faults: covered}

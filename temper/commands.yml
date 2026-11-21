@@ -1,0 +1,8 @@
+# Named commands for the scenarios in temper/scenarios.
+commands:
+  rivercheck:
+    doc: >
+      One step of a scenario, run by rivercheck (temper/recipe/go) in a
+      one-shot container: migrate, insert N, stuck N, cancel ID or
+      periodic-audit.
+    run: [tool, rivercheck]

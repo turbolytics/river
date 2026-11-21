@@ -4,6 +4,8 @@
 #   temper scenarios run --scenario <id>
 #
 # Each prints its verdicts, and keeps its log in .temper/scenarios/<id>/.
+# postgres.* commands come from the postgres pack (temper.yml), and
+# rivercheck from temper/commands.yml.
 
 - id: river.cancel_during_rescue
   runner: temper
@@ -18,32 +20,32 @@
   covers: [cancel.never_reruns]
   events:
     - up: {postgres: 1}
-    - run: [tool, rivercheck, migrate]
-    - run: [tool, rivercheck, stuck, "3"]          # jobs 1 (A), 2 (B) and 3 (C)
-    - run: [tool, rivercheck, cancel, "3"]          # C: cancelled before any rescue
-    - hold:
+    - rivercheck: migrate
+    - rivercheck: [stuck, "3"]                      # jobs 1 (A), 2 (B) and 3 (C)
+    - rivercheck: [cancel, "3"]                     # C: cancelled before any rescue
+    - hold:                                         # lock A's row, so the rescuer's write blocks on it
         name: lock_a
-        exec: [postgres, psql, -U, postgres, -d, river, -c,
-               "BEGIN; SET application_name = 'lock_a'; SELECT id FROM river_job WHERE id = 1 FOR UPDATE; SELECT pg_sleep(600)"]
+        postgres.hold_lock: [lock_a, "SELECT id FROM river_job WHERE id = 1 FOR UPDATE"]
+        release: {postgres.end_session: lock_a}
     - up: {leader-go: 1}
     - wait_until:                                   # the rescuer's write is blocked on A
-        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
-               "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%river:rescue_count%' AND wait_event_type = 'Lock'"]
+        postgres.sql: "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%river:rescue_count%' AND wait_event_type = 'Lock'"
         at_least: 1
         timeout: 90s
-    - run: [tool, rivercheck, cancel, "2"]          # B: cancelled while the rescue is in flight
-    - exec:                                         # end the lock's session; ending psql alone leaves the backend holding it
-        [postgres, psql, -U, postgres, -d, river, -Atc,
-         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'lock_a'"]
+    - rivercheck: [cancel, "2"]                     # B: cancelled while the rescue is in flight
+    - release: lock_a                               # the rescuer's write goes through
     - wait_until:
-        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
-               "SELECT count(*) FROM river_job WHERE id IN (2, 3) AND finalized_at IS NOT NULL"]
+        postgres.sql: "SELECT count(*) FROM river_job WHERE id IN (2, 3) AND finalized_at IS NOT NULL"
         at_least: 2
         timeout: 60s
+    - postgres.sql: >-                              # for the log: each cancel and each attempt, in order
+        SELECT to_char(at, 'HH24:MI:SS.MS') || ' job ' || job_id || ': ' || what FROM (
+        SELECT job_id, at, 'JobCancel returned ' || returned_state AS what FROM audit_cancels
+        UNION ALL SELECT job_id, at, 'attempt ' || attempt || ' started' FROM audit_attempts) e
+        ORDER BY at
     - check:
         covers: cancel.never_reruns                 # attempts that started after their job's cancel returned
-        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
-               "SELECT count(*) FROM audit_attempts a JOIN audit_cancels c USING (job_id) WHERE a.at > c.at"]
+        postgres.sql: "SELECT count(*) FROM audit_attempts a JOIN audit_cancels c USING (job_id) WHERE a.at > c.at"
 
 - id: river.java_complete_after_rescue
   runner: temper
@@ -59,23 +61,25 @@
   covers: [complete_tx.effect_once]
   events:
     - up: {postgres: 1}
-    - run: [tool, rivercheck, migrate]
-    - run: [tool, rivercheck, insert, "1"]
+    - rivercheck: migrate
+    - rivercheck: [insert, "1"]
     - up: {worker-java-stalling: 1}
     - wait_until:                                   # attempt 1 has started and is overrunning
-        exec: [postgres, psql, -U, postgres, -d, river, -Atc, "SELECT count(*) FROM audit_attempts"]
+        postgres.sql: "SELECT count(*) FROM audit_attempts"
         at_least: 1
         timeout: 120s
     - up: {rescuer-go: 1}                           # a Go leader whose rescuer retries it
     - wait_until:
-        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
-               "SELECT count(*) FROM river_job WHERE id = 1 AND finalized_at IS NOT NULL"]
+        postgres.sql: "SELECT count(*) FROM river_job WHERE id = 1 AND finalized_at IS NOT NULL"
         at_least: 1
         timeout: 120s
+    - postgres.sql: >-                              # for the log: each committed effect, and the job's final state
+        SELECT to_char(e.at, 'HH24:MI:SS.MS') || ' job ' || e.job_id || ' attempt ' || e.attempt
+        || ': effect committed; the job is now ' || j.state
+        FROM audit_effects e JOIN river_job j ON j.id = e.job_id ORDER BY e.at
     - check:
         covers: complete_tx.effect_once             # jobs whose effect committed more than once
-        exec: [postgres, psql, -U, postgres, -d, river, -Atc,
-               "SELECT count(*) FROM (SELECT job_id FROM audit_effects GROUP BY job_id HAVING count(*) > 1) d"]
+        postgres.sql: "SELECT count(*) FROM (SELECT job_id FROM audit_effects GROUP BY job_id HAVING count(*) > 1) d"
 
 - id: river.periodic_once_per_period
   runner: temper
@@ -97,13 +101,12 @@
   seed: 1
   events:
     - up: {postgres: 1}
-    - run: [tool, rivercheck, migrate]
+    - rivercheck: migrate
     - up: {$subject: true}
     - sleep: 15s
-    - fault: periodic_stall
+    - fault: periodic_stall                         # temper/faults.yml: a fixed 5 s freeze
     - sleep: 10s
     - down: [periodic-go, periodic-java]
-    - run: [tool, rivercheck, periodic-audit, --explain]   # each run, its unique key, and whether it deduplicates
-    - check:
+    - check:                                        # each run, its unique key and its outcome go to the log
         covers: periodic.once_per_period            # runs not deduplicated when enqueued again
-        run: [tool, rivercheck, periodic-audit]
+        rivercheck: periodic-audit

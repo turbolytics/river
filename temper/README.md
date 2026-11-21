@@ -7,20 +7,27 @@ language's client in one database. The probe and its tests are in
 ## Reproduce the findings
 
 Each finding is a scenario in `temper/scenarios/repro.yml`. One command
-reproduces it, with Docker and Temper installed
+reproduces it, with Docker and Temper v0.1.6 or later installed
 (`brew install turbolytics/tap/temper`, or
-`go install github.com/turbolytics/temper/cmd/temper@v0.1.5`):
+`go install github.com/turbolytics/temper/cmd/temper@v0.1.6`):
 
 ```sh
-temper scenarios run --scenario river.cancel_during_rescue
+temper scenarios run --scenario river.cancel_during_rescue --build
 temper scenarios run --scenario river.java_complete_after_rescue
 temper scenarios run --scenario river.periodic_once_per_period
 ```
 
-Each builds its images from this checkout (`temper/compose.yml`), runs
-against a fresh Postgres, prints its verdict, and exits 1 when the bug
-reproduces. The full log, every step and every query result, is in
-`.temper/scenarios/<scenario>/<subject>/run.log`.
+`--build` builds the images from this checkout (`temper/compose.yml`) first.
+Later runs reuse them. Each scenario runs against a fresh Postgres, prints
+its verdict, and exits 1 when the bug reproduces. Each failed 10 runs out of
+10 with Temper v0.1.6. The full log is in
+`.temper/scenarios/<scenario>/<subject>/run.log`. It holds every step, every
+query result and every program's stderr, so the periodic audit's line for
+each run is there too.
+
+The queries and the held row lock use Temper's built-in `postgres` recipe
+pack (`temper.yml`). The `rivercheck` steps are a named command in
+`temper/commands.yml`.
 
 | Scenario | What it shows | Affected |
 |---|---|---|
@@ -30,6 +37,14 @@ reproduces. The full log, every step and every query result, is in
 
 The programs the scenarios drive are in `temper/recipe`: `rivercheck` (Go)
 and two Java programs. The checks are SQL over the audit tables they write.
+
+`temper scenarios run` alone records nothing. To put the scenarios'
+verdicts in the matrix beside the probe's, record them at the `faults` level:
+
+```sh
+temper run --level faults -- temper scenarios run
+temper matrix --all-levels
+```
 
 ## Setup
 

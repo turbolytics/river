@@ -4,7 +4,7 @@
 
 **11 features and 12 invariants on 7 subjects, at level `faults`.**
 
-✅ 87 covered · ❌ 8 failing · ⬜ 0 missing · ☑️ 0 exempt · ⛔ 0 unsupported · ⏳ 0 unenforced
+✅ 86 covered · ❌ 9 failing · ⬜ 0 missing · ☑️ 0 exempt · ⛔ 0 unsupported · ⏳ 0 unenforced
 
 Each cell is one claim in `temper/` at one level. It is covered when a test that ran
 at that level passed and none failed: a skip proves nothing, and a pass never hides
@@ -25,6 +25,7 @@ a failure. Regenerate with `temper matrix`.
 | ❌ failing | feature | `leader.rescue` |  | `faults` |  |
 | ❌ failing | invariant | `cancel.never_reruns` | `cluster.go` | `faults` |  |
 | ❌ failing | invariant | `complete_tx.effect_once` | `cluster.go_java` | `faults` |  |
+| ❌ failing | invariant | `periodic.once_per_period` | `cluster.go` | `faults` |  |
 | ❌ failing | invariant | `periodic.once_per_period` | `cluster.go_java` | `faults` |  |
 
 ## Features
@@ -59,7 +60,7 @@ What the system must never do, or must always do, for each subject it applies to
 | [`insert.rollback_never_runs`](#inv-insert.rollback_never_runs) | atomicity | `faults` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | [`job.never_lost`](#inv-job.never_lost) | delivery | `faults` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | [`pause.honored`](#inv-pause.honored) | control | `faults` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| [`periodic.once_per_period`](#inv-periodic.once_per_period) | uniqueness | `faults` | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| [`periodic.once_per_period`](#inv-periodic.once_per_period) | uniqueness | `faults` | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | [`retry.discard_only_at_max`](#inv-retry.discard_only_at_max) | delivery | `faults` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | [`retry.within_max_attempts`](#inv-retry.within_max_attempts) | delivery | `faults` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | [`schedule.never_early`](#inv-schedule.never_early) | ordering | `faults` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
