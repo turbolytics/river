@@ -14,6 +14,7 @@ reproduces it, with Docker and Temper v0.1.6 or later installed
 ```sh
 temper scenarios run --scenario river.cancel_during_rescue --build
 temper scenarios run --scenario river.java_complete_after_rescue
+temper scenarios run --scenario river.java_complete_after_rescue_java_only
 temper scenarios run --scenario river.periodic_once_per_period
 ```
 
@@ -33,6 +34,7 @@ pack (`temper.yml`). The `rivercheck` steps are a named command in
 |---|---|---|
 | `river.cancel_during_rescue` | A job cancelled while the rescuer is retrying it runs again. | Go |
 | `river.java_complete_after_rescue` | `complete(connection)` commits for an attempt the rescuer already retried, so the effect commits twice. | Java |
+| `river.java_complete_after_rescue_java_only` | The same, with Java clients only: a stalling Java worker and a separate Java leader. (A Java client's rescuer skips jobs it is running itself, so the rescue needs a second client.) | Java |
 | `river.periodic_once_per_period` | A periodic job unique per period is keyed on its insert time, not its run time, so a run enqueued late is not deduplicated. | Go and Java |
 
 The programs the scenarios drive are in `temper/recipe`: `rivercheck` (Go)

@@ -81,6 +81,41 @@
         covers: complete_tx.effect_once             # jobs whose effect committed more than once
         postgres.sql: "SELECT count(*) FROM (SELECT job_id FROM audit_effects GROUP BY job_id HAVING count(*) > 1) d"
 
+- id: river.java_complete_after_rescue_java_only
+  runner: temper
+  name: In a Java-only cluster too, a worker's completion transaction never commits for an attempt the rescuer already retried
+  description: >
+    complete(connection) puts the job's completion in the caller's
+    transaction, so the effect commits only if the job completes. When the
+    rescuer has already retried the attempt, completing must fail and the
+    transaction must roll back; otherwise the effect commits and the retry
+    runs it again. Every client here is Java: the stalling worker, and a
+    separate Java leader whose rescuer retries the attempt.
+  subject: cluster.java
+  compose: temper/compose.yml
+  covers: [complete_tx.effect_once]
+  events:
+    - up: {postgres: 1}
+    - rivercheck: migrate
+    - rivercheck: [insert, "1"]
+    - up: {worker-java-stalling: 1}
+    - wait_until:                                   # attempt 1 has started and is overrunning
+        postgres.sql: "SELECT count(*) FROM audit_attempts"
+        at_least: 1
+        timeout: 120s
+    - up: {rescuer-java: 1}                         # a separate Java leader whose rescuer retries it
+    - wait_until:
+        postgres.sql: "SELECT count(*) FROM river_job WHERE id = 1 AND finalized_at IS NOT NULL"
+        at_least: 1
+        timeout: 120s
+    - postgres.sql: >-                              # for the log: each committed effect, and the job's final state
+        SELECT to_char(e.at, 'HH24:MI:SS.MS') || ' job ' || e.job_id || ' attempt ' || e.attempt
+        || ': effect committed; the job is now ' || j.state
+        FROM audit_effects e JOIN river_job j ON j.id = e.job_id ORDER BY e.at
+    - check:
+        covers: complete_tx.effect_once             # jobs whose effect committed more than once
+        postgres.sql: "SELECT count(*) FROM (SELECT job_id FROM audit_effects GROUP BY job_id HAVING count(*) > 1) d"
+
 - id: river.periodic_once_per_period
   runner: temper
   name: A periodic job unique per period is enqueued once per period, even when its leader stalls

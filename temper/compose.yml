@@ -37,6 +37,11 @@ services:
     <<: [*river, *go]
     command: ["rivercheck", "work", "--id", "rescuer-go", "--queue", "other", "--rescue-after", "2s"]
 
+  # A Java client that leads and rescues on the unused queue, like rescuer-go.
+  rescuer-java:
+    <<: [*river, *java]
+    command: ["java", "-cp", "/river.jar:/deps/*", "/recipe/RescuerLeader.java"]
+
   # A Java worker, never a leader, whose first attempt overruns.
   worker-java-stalling:
     <<: [*river, *java]
